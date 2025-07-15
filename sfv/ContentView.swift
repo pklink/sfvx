@@ -25,6 +25,7 @@ struct ContentView: View {
     @State private var showFileList: Bool = false
     @State private var isCalculating: Bool = false
     @State private var calculationProgress: Double = 0.0
+    @State private var showLoadingIndicator: Bool = false
 
     func crc32Hash(for url: URL) -> UInt32? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -37,6 +38,10 @@ struct ContentView: View {
     func handleDrop(urls: [URL]) {
         isCalculating = true
         calculationProgress = 0.0
+        showLoadingIndicator = true
+        // Minimum loading indicator duration (e.g. 0.5 seconds)
+        let minIndicatorTime: TimeInterval = 0.5
+        let startTime = Date()
         DispatchQueue.global(qos: .userInitiated).async {
             var sfvMap: [String: UInt32]? = nil
             if let sfvURL = urls.first(where: { $0.pathExtension.lowercased() == "sfv" }) {
@@ -55,18 +60,21 @@ struct ContentView: View {
                     calculationProgress = progress
                 }
             }
-            DispatchQueue.main.async {
+            let elapsed = Date().timeIntervalSince(startTime)
+            let delay = max(0, minIndicatorTime - elapsed)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 droppedFiles = files
                 showFileList = true
                 isCalculating = false
                 calculationProgress = 0.0
+                showLoadingIndicator = false
             }
         }
     }
 
     var body: some View {
         VStack {
-            if isCalculating {
+            if showLoadingIndicator || isCalculating {
                 VStack {
                     ProgressView("Calculating checksums...", value: calculationProgress, total: 1.0)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
