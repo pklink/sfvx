@@ -24,6 +24,7 @@ struct ContentView: View {
     @State private var droppedFiles: [DroppedFile] = []
     @State private var showFileList: Bool = false
     @State private var isCalculating: Bool = false
+    @State private var calculationProgress: Double = 0.0
 
     func crc32Hash(for url: URL) -> UInt32? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -35,6 +36,7 @@ struct ContentView: View {
 
     func handleDrop(urls: [URL]) {
         isCalculating = true
+        calculationProgress = 0.0
         DispatchQueue.global(qos: .userInitiated).async {
             var sfvMap: [String: UInt32]? = nil
             if let sfvURL = urls.first(where: { $0.pathExtension.lowercased() == "sfv" }) {
@@ -42,16 +44,22 @@ struct ContentView: View {
             }
             let fileURLs = urls.filter { $0.pathExtension.lowercased() != "sfv" }
             var files: [DroppedFile] = []
-            for url in fileURLs {
+            let total = fileURLs.count
+            for (index, url) in fileURLs.enumerated() {
                 if let hash = crc32Hash(for: url) {
                     let expected = sfvMap?[url.lastPathComponent]
                     files.append(DroppedFile(url: url, crc32: hash, expectedCRC32: expected))
+                }
+                let progress = Double(index + 1) / Double(max(total, 1))
+                DispatchQueue.main.async {
+                    calculationProgress = progress
                 }
             }
             DispatchQueue.main.async {
                 droppedFiles = files
                 showFileList = true
                 isCalculating = false
+                calculationProgress = 0.0
             }
         }
     }
@@ -59,8 +67,13 @@ struct ContentView: View {
     var body: some View {
         VStack {
             if isCalculating {
-                ProgressView("Calculating checksums...")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack {
+                    ProgressView("Calculating checksums...", value: calculationProgress, total: 1.0)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    Text(String(format: "%.0f%%", calculationProgress * 100))
+                        .font(.caption)
+                        .padding(.top, 4)
+                }
             } else if showFileList {
                 List(droppedFiles) { file in
                     VStack(alignment: .leading) {
