@@ -83,7 +83,7 @@ struct ContentView: View {
                     Button("Save SFV") {
                         let panel = NSSavePanel()
                         panel.allowedContentTypes = [UTType(filenameExtension: "sfv")!]
-                        panel.nameFieldStringValue = "files.sfv"
+                        panel.nameFieldStringValue = "checksums.sfv"
                         panel.canCreateDirectories = true
                         if panel.runModal() == .OK, let url = panel.url {
                             try? SFVManager.saveSFV(droppedFiles, to: url)
