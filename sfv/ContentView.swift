@@ -26,6 +26,8 @@ struct ContentView: View {
     @State private var isCalculating: Bool = false
     @State private var calculationProgress: Double = 0.0
     @State private var showLoadingIndicator: Bool = false
+    @State private var lastDropFirstFileDirectory: URL? = nil
+    @State private var saveShortcutMonitor: Any? = nil
 
     func crc32Hash(for url: URL) -> UInt32? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -39,6 +41,12 @@ struct ContentView: View {
         isCalculating = true
         calculationProgress = 0.0
         showLoadingIndicator = true
+        // Store the directory of the first file in the last drop
+        if let firstFile = urls.first(where: { $0.pathExtension.lowercased() != "sfv" }) {
+            lastDropFirstFileDirectory = firstFile.deletingLastPathComponent()
+        } else {
+            lastDropFirstFileDirectory = nil
+        }
         // Minimum loading indicator duration (e.g. 0.5 seconds)
         let minIndicatorTime: TimeInterval = 0.5
         let startTime = Date()
@@ -127,13 +135,11 @@ struct ContentView: View {
                 .padding(.vertical)
                 HStack {
                     Button("Save SFV") {
-                        // Use the directory of the first file in the current droppedFiles
-                        let defaultDirectory = droppedFiles.first?.url.deletingLastPathComponent()
                         let panel = NSSavePanel()
                         panel.allowedContentTypes = [UTType(filenameExtension: "sfv")!]
                         panel.nameFieldStringValue = "checksums.sfv"
                         panel.canCreateDirectories = true
-                        if let defaultDirectory = defaultDirectory {
+                        if let defaultDirectory = lastDropFirstFileDirectory {
                             panel.directoryURL = defaultDirectory
                         }
                         if panel.runModal() == .OK, let url = panel.url {
@@ -171,5 +177,49 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+        .onAppear {
+            addSaveShortcut()
+        }
+        .onChange(of: showFileList) { newValue in
+            updateSaveShortcutMonitor(enabled: newValue)
+        }
+    }
+
+    private func addSaveShortcut() {
+        updateSaveShortcutMonitor(enabled: showFileList)
+    }
+
+    private func updateSaveShortcutMonitor(enabled: Bool) {
+        #if os(macOS)
+        if enabled {
+            if saveShortcutMonitor == nil {
+                saveShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                    if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "s" {
+                        saveSFV()
+                        return nil
+                    }
+                    return event
+                }
+            }
+        } else {
+            if let monitor = saveShortcutMonitor {
+                NSEvent.removeMonitor(monitor)
+                saveShortcutMonitor = nil
+            }
+        }
+        #endif
+    }
+
+    private func saveSFV() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "sfv")!]
+        panel.nameFieldStringValue = "checksums.sfv"
+        panel.canCreateDirectories = true
+        if let defaultDirectory = lastDropFirstFileDirectory {
+            panel.directoryURL = defaultDirectory
+        }
+        if panel.runModal() == .OK, let url = panel.url {
+            try? SFVManager.saveSFV(droppedFiles, to: url)
+        }
     }
 }
