@@ -23,6 +23,7 @@ enum VerificationStatus: String {
 struct ContentView: View {
     @State private var droppedFiles: [DroppedFile] = []
     @State private var showFileList: Bool = false
+    @State private var isCalculating: Bool = false
 
     func crc32Hash(for url: URL) -> UInt32? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -33,25 +34,34 @@ struct ContentView: View {
     }
 
     func handleDrop(urls: [URL]) {
-        var sfvMap: [String: UInt32]? = nil
-        if let sfvURL = urls.first(where: { $0.pathExtension.lowercased() == "sfv" }) {
-            sfvMap = SFVManager.parseSFV(sfvURL)
-        }
-        let fileURLs = urls.filter { $0.pathExtension.lowercased() != "sfv" }
-        var files: [DroppedFile] = []
-        for url in fileURLs {
-            if let hash = crc32Hash(for: url) {
-                let expected = sfvMap?[url.lastPathComponent]
-                files.append(DroppedFile(url: url, crc32: hash, expectedCRC32: expected))
+        isCalculating = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            var sfvMap: [String: UInt32]? = nil
+            if let sfvURL = urls.first(where: { $0.pathExtension.lowercased() == "sfv" }) {
+                sfvMap = SFVManager.parseSFV(sfvURL)
+            }
+            let fileURLs = urls.filter { $0.pathExtension.lowercased() != "sfv" }
+            var files: [DroppedFile] = []
+            for url in fileURLs {
+                if let hash = crc32Hash(for: url) {
+                    let expected = sfvMap?[url.lastPathComponent]
+                    files.append(DroppedFile(url: url, crc32: hash, expectedCRC32: expected))
+                }
+            }
+            DispatchQueue.main.async {
+                droppedFiles = files
+                showFileList = true
+                isCalculating = false
             }
         }
-        droppedFiles = files
-        showFileList = true
     }
 
     var body: some View {
         VStack {
-            if showFileList {
+            if isCalculating {
+                ProgressView("Calculating checksums...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if showFileList {
                 List(droppedFiles) { file in
                     VStack(alignment: .leading) {
                         Text(file.url.lastPathComponent)
@@ -81,15 +91,10 @@ struct ContentView: View {
                 .padding(.vertical)
                 HStack {
                     Button("Save SFV") {
-                        // Determine default directory from first dropped file
-                        let defaultDirectory = droppedFiles.first?.url.deletingLastPathComponent()
                         let panel = NSSavePanel()
                         panel.allowedContentTypes = [UTType(filenameExtension: "sfv")!]
                         panel.nameFieldStringValue = "checksums.sfv"
                         panel.canCreateDirectories = true
-                        if let defaultDirectory = defaultDirectory {
-                            panel.directoryURL = defaultDirectory
-                        }
                         if panel.runModal() == .OK, let url = panel.url {
                             try? SFVManager.saveSFV(droppedFiles, to: url)
                         }
