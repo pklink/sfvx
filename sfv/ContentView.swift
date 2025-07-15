@@ -90,6 +90,21 @@ struct ContentView: View {
                         }
                     }
                 }
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    var urls: [URL] = []
+                    let group = DispatchGroup()
+                    for provider in providers {
+                        group.enter()
+                        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                            if let url = url { urls.append(url) }
+                            group.leave()
+                        }
+                    }
+                    group.notify(queue: .main) {
+                        handleDrop(urls: urls)
+                    }
+                    return true
+                }
                 // Summary Section
                 let totalFiles = droppedFiles.count
                 let successful = droppedFiles.filter { $0.status == .match }.count
