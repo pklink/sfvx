@@ -28,7 +28,6 @@ struct ContentView: View {
     @State private var showLoadingIndicator: Bool = false
     @State private var lastDropFirstFileDirectory: URL? = nil
     @State private var saveShortcutMonitor: Any? = nil
-    @State private var isDropTargeted: Bool = false
 
     func crc32Hash(for url: URL) -> UInt32? {
         guard let data = try? Data(contentsOf: url) else { return nil }
@@ -92,40 +91,35 @@ struct ContentView: View {
                         .padding(.top, 4)
                 }
             } else if showFileList {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isDropTargeted ? Color.accentColor.opacity(0.12) : Color.clear)
-                        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
-                    List(droppedFiles) { file in
-                        VStack(alignment: .leading) {
-                            Text(file.url.lastPathComponent)
-                            Text(String(format: "CRC32: %08X", file.crc32))
-                                .font(.caption)
-                            if let expected = file.expectedCRC32 {
-                                Text("Expected: \(String(format: "%08X", expected))")
-                                    .font(.caption2)
-                                    .foregroundColor(.gray)
-                                Text("Status: \(file.status.rawValue)")
-                                    .font(.caption2)
-                                    .foregroundColor(file.status == .match ? .green : .red)
-                            }
+                List(droppedFiles) { file in
+                    VStack(alignment: .leading) {
+                        Text(file.url.lastPathComponent)
+                        Text(String(format: "CRC32: %08X", file.crc32))
+                            .font(.caption)
+                        if let expected = file.expectedCRC32 {
+                            Text("Expected: \(String(format: "%08X", expected))")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                            Text("Status: \(file.status.rawValue)")
+                                .font(.caption2)
+                                .foregroundColor(file.status == .match ? .green : .red)
                         }
                     }
-                    .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                        var urls: [URL] = []
-                        let group = DispatchGroup()
-                        for provider in providers {
-                            group.enter()
-                            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                                if let url = url { urls.append(url) }
-                                group.leave()
-                            }
+                }
+                .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                    var urls: [URL] = []
+                    let group = DispatchGroup()
+                    for provider in providers {
+                        group.enter()
+                        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                            if let url = url { urls.append(url) }
+                            group.leave()
                         }
-                        group.notify(queue: .main) {
-                            handleDrop(urls: urls)
-                        }
-                        return true
                     }
+                    group.notify(queue: .main) {
+                        handleDrop(urls: urls)
+                    }
+                    return true
                 }
                 // Summary Section
                 let totalFiles = droppedFiles.count
@@ -162,10 +156,9 @@ struct ContentView: View {
                 }
             } else {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isDropTargeted ? Color.accentColor.opacity(0.12) : Color.gray.opacity(0.04))
-                    .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+                    .fill(Color.gray.opacity(0))
                     .overlay(Text("Drop files or SFV here").foregroundColor(.gray))
-                    .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                    .onDrop(of: [.fileURL], isTargeted: nil) { providers in
                         var urls: [URL] = []
                         let group = DispatchGroup()
                         for provider in providers {
@@ -194,6 +187,18 @@ struct ContentView: View {
 
     private func addSaveShortcut() {
         updateSaveShortcutMonitor(enabled: showFileList)
+        #if os(macOS)
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 53 { // Escape key
+                if showFileList {
+                    droppedFiles = []
+                    showFileList = false
+                    return nil
+                }
+            }
+            return event
+        }
+        #endif
     }
 
     private func updateSaveShortcutMonitor(enabled: Bool) {
