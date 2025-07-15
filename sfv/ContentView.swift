@@ -127,10 +127,15 @@ struct ContentView: View {
                 .padding(.vertical)
                 HStack {
                     Button("Save SFV") {
+                        // Use the directory of the first file in the current droppedFiles
+                        let defaultDirectory = droppedFiles.first?.url.deletingLastPathComponent()
                         let panel = NSSavePanel()
                         panel.allowedContentTypes = [UTType(filenameExtension: "sfv")!]
                         panel.nameFieldStringValue = "checksums.sfv"
                         panel.canCreateDirectories = true
+                        if let defaultDirectory = defaultDirectory {
+                            panel.directoryURL = defaultDirectory
+                        }
                         if panel.runModal() == .OK, let url = panel.url {
                             try? SFVManager.saveSFV(droppedFiles, to: url)
                         }
